@@ -8,7 +8,7 @@ Telegram bot for clipping videos
 
  - ```pipenv install```
 
-## Usage
+## Usage
 
 ```pipenv install```
 
