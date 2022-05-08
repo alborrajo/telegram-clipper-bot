@@ -2,12 +2,16 @@
 
 import configparser
 import logging
-from multiprocessing.sharedctypes import Value
 import re
 import tempfile
+import time
+from os import remove
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 from yt_dlp import YoutubeDL
+
+class RateLimitError(Exception):
+    pass
 
 # Enable logging
 logging.basicConfig(
@@ -25,6 +29,8 @@ url_regex = re.compile(
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
 timestamp_regex = re.compile(r'([0-9]+\:)?([0-9]{1,2}\:)?[0-9]{1,2}')
+
+rate_limit = {}
 
 # Define a few command handlers. These usually take the two arguments update and
 # context.
@@ -52,7 +58,11 @@ def clip(update: Update, context: CallbackContext) -> None:
         or timestamp_regex.fullmatch(end_time) is None:
             raise ValueError
 
+        if exceeds_rate_limit(update.message.chat_id):
+            raise RateLimitError
+
         update.message.reply_text("Clipping...")
+        logger.info(f"For chat {update.message.chat_id}: Clipping {url} from {start_time} to {end_time}")
 
         ydl_opts = {
             'external_downloader': 'ffmpeg',
@@ -60,6 +70,7 @@ def clip(update: Update, context: CallbackContext) -> None:
             'outtmpl': f'{download_directory}/%(id)s.%(ext)s',
             "format": "mp4",
             "noplaylist": True,
+            "quiet": True,
         }  
         with YoutubeDL(ydl_opts) as ydl:
             meta = ydl.extract_info(
@@ -71,13 +82,37 @@ def clip(update: Update, context: CallbackContext) -> None:
 
         with open(f"{download_directory}/{video_id}.{video_ext}", "rb") as file:
             update.message.reply_video(file)
+            
+        # Clean up
+        remove(f"{download_directory}/{video_id}.{video_ext}")
+
+        logger.info(f"For chat {update.message.chat_id}: Done clipping {url} from {start_time} to {end_time}")
 
     except (IndexError, ValueError):
         help(update, context)
 
+    except RateLimitError:
+        update.message.reply_text("Too many requests. Try again later.")
+        logger.warning(f"For chat {update.message.chat_id}: Rate limit exceeded")
+
     except Exception as e:
         update.message.reply_text("Something went wrong somehow, please try again later")
-        logger.exception("Something went wrong", e)
+        logger.exception(f"For chat {update.message.chat_id}: Something went wrong", e)
+
+
+def exceeds_rate_limit(chat_id: int) -> bool:
+    global rate_limit
+    if chat_id not in rate_limit:
+        rate_limit[chat_id] = []
+
+    for timestamp in rate_limit[chat_id]:
+        if timestamp + rate_limit_minutes*60 < time.time():
+            rate_limit[chat_id].clear()
+            break
+
+    rate_limit[chat_id].append(time.time())
+    
+    return len(rate_limit[chat_id]) > rate_limit_threshold
 
 
 def main() -> None:
@@ -107,8 +142,14 @@ if __name__ == '__main__':
         config = configparser.ConfigParser()
         config.read('config.ini')
         api_key = config['General']['APIKey']
+        rate_limit_threshold = int(config['General']['RateLimitThreshold'])
+        rate_limit_minutes = int(config['General']['RateLimitMinutes'])
     except KeyError as e:
-        config['General'] = {'APIKey': 'Enter your API key here'}
+        config['General'] = {
+            'APIKey': 'Enter your API key here',
+            'RateLimitThreshold': '5',
+            'RateLimitMinutes': '5',
+        }
         with open('config.ini', 'w') as configfile:
             config.write(configfile)
         logger.error("API key not found, please enter it in config.ini")
