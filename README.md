@@ -6,14 +6,16 @@ Telegram bot for clipping videos
 
  - ffmpeg
 
- - ```pipenv install```
+ - python 3.9
+
+ - pipenv
 
 ## Usage
 
-```pipenv install```
+1. ```pipenv install```
 
-```pipenv run python clipper.py```
+2. ```pipenv run python clipper.py```
 
-The program will fail due to no API key configured. A config.ini file will be generated, place your API key in there and run again
+3. The program will fail due to no API key configured. A config.ini file will be generated, place your API key in there and run again
 
-```pipenv run python clipper.py```
+4. ```pipenv run python clipper.py```

@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "ms-python.vscode-pylance",
+        "ms-python.python",
+        "visualstudioexptteam.vscodeintellicode",
+        "visualstudioexptteam.intellicode-api-usage-examples",
+        "visualstudioexptteam.vscodeintellicode-completions",
+        "usernamehw.errorlens"
+    ]
+}

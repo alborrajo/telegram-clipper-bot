@@ -6,9 +6,11 @@ import re
 import tempfile
 import time
 from os import remove
-from telegram import Update
+from typing import List, cast
+from telegram import Update, User
 from telegram.ext import Updater, CommandHandler, CallbackContext
 from yt_dlp import YoutubeDL
+import uuid
 
 class RateLimitError(Exception):
     pass
@@ -36,7 +38,7 @@ rate_limit = {}
 # context.
 def start(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /start is issued."""
-    user = update.effective_user
+    user = cast(User, update.effective_user)
     update.message.reply_markdown_v2(
         fr'Hi {user.mention_markdown_v2()}\! Send me a YT link and a time range and I\'ll clip it for you\!'
     )
@@ -49,9 +51,7 @@ def help(update: Update, context: CallbackContext) -> None:
 
 def clip(update: Update, context: CallbackContext) -> None:
     try:
-        url = context.args[0]
-        start_time = context.args[1]
-        end_time = context.args[2]
+        url, start_time, end_time = cast(List[str], context.args)
 
         if url_regex.fullmatch(url) is None \
         or timestamp_regex.fullmatch(start_time) is None \
@@ -64,27 +64,24 @@ def clip(update: Update, context: CallbackContext) -> None:
         update.message.reply_text("Clipping...")
         logger.info(f"For chat {update.message.chat_id}: Clipping {url} from {start_time} to {end_time}")
 
+        filepath = f'{download_directory}/{str(uuid.uuid4())}.mp4'
+
         ydl_opts = {
             'external_downloader': 'ffmpeg',
             'external_downloader_args': {'ffmpeg_i': ['-ss', start_time, '-to', end_time]},
-            'outtmpl': f'{download_directory}/%(id)s.%(ext)s',
+            'outtmpl': filepath,
             "format": "mp4",
             "noplaylist": True,
             "quiet": True,
-        }  
+        }
         with YoutubeDL(ydl_opts) as ydl:
-            meta = ydl.extract_info(
-                url,
-                download=True,
-            )
-            video_id = meta["id"]
-            video_ext = meta["ext"]
+            ydl.download(url)
 
-        with open(f"{download_directory}/{video_id}.{video_ext}", "rb") as file:
+        with open(filepath, "rb") as file:
             update.message.reply_video(file)
             
         # Clean up
-        remove(f"{download_directory}/{video_id}.{video_ext}")
+        remove(filepath)
 
         logger.info(f"For chat {update.message.chat_id}: Done clipping {url} from {start_time} to {end_time}")
 
@@ -138,8 +135,8 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    config = configparser.ConfigParser()
     try:
-        config = configparser.ConfigParser()
         config.read('config.ini')
         api_key = config['General']['APIKey']
         rate_limit_threshold = int(config['General']['RateLimitThreshold'])
