@@ -72,7 +72,7 @@ def clip(update: Update, context: CallbackContext) -> None:
             'outtmpl': filepath,
             "format": "mp4",
             "noplaylist": True,
-            "quiet": True,
+            "quiet": False,
         }
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download(url)
